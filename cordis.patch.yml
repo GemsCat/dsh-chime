@@ -1,0 +1,12 @@
+# dsh-chime bundle 层：在 profile 里插入一行 Host 插件。
+# 配置项说明见 README.md；改完保存即可热重载（无需重启）。
+- insert:
+    - id: dsh-chime
+      name: '@local/dsh-chime'
+      config:
+        enabled: true
+        minGapMs: 600
+        debug: false
+        debugLog: null
+        sounds: {}
+        events: {}

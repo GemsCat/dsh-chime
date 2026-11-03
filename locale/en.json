@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Chime Alerts",
+    "description": "Plays a short sound when the agent asks a question, finishes a turn, errors, or a subagent, background job, goal, or session settles."
+  }
+}

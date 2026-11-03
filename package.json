@@ -1,0 +1,31 @@
+{
+  "name": "@local/dsh-chime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH 提示音：提问/审批、每轮结束、出错、子代理/作业/目标/会话停止时播放短音（Host 半边，无 UI）",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "assets/*.wav",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
