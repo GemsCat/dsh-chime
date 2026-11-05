@@ -1,31 +1,52 @@
 {
-  "name": "@local/dsh-chime",
-  "version": "0.1.0",
-  "private": true,
-  "description": "DSH 提示音：提问/审批、每轮结束、出错、子代理/作业/目标/会话停止时播放短音（Host 半边，无 UI）",
+  "name": "dsh-chime",
+  "version": "1.0.0",
+  "description": "DSH 提示音插件：Agent 提问、工具审批、一轮结束、报错，以及子代理/后台作业/目标/会话收尾时响一声，带界面配置表单。",
   "license": "MIT",
+  "author": "dsh-chime contributors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "bundle",
+    "notification",
+    "sound"
+  ],
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
+    "client.js",
     "cordis.patch.yml",
     "assets/*.wav",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.5"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   }
 }

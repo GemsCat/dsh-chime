@@ -1,149 +1,195 @@
-# dsh-chime · DSH 提示音
+# dsh-chime
 
-DSH（DeepSeek Harness）的提示音插件：只在**该提醒的时候**响一声，不弹窗、不抢焦点。
+DSH（DeepSeek Harness）的提示音插件：在**需要你出手**和**一轮收尾**的时刻响一声。
+不弹窗、不抢焦点、不常驻后台、不占端口。
 
-纯 Host 半边实现——没有客户端代码、没有 UI、没有第三方依赖，用的全是 DSH 的公开
-Event / Service，所以 DSH 升级时最不容易被带走。
+DSH 默认是安静的。Agent 停下来等你说话、提问卡片弹出来、后台作业跑完、子代理交回结果
+—— 这些时刻都没有声音，人一离开屏幕就会漏掉。这个插件补的就是这一层。
+
+> **平台**：仅 Windows。播放走系统自带的 `powershell.exe` + `System.Media.SoundPlayer`，
+> 不装任何音频库，也不常驻进程。
 
 ## 什么时候响
 
-| 声音 | 触发 | 信号 |
+| 声音 | 触发场景 | 监听的信号 |
 |---|---|---|
 | `alert` | Agent 提问 | `session/event` → `tool/call` 且 `name === 'ask_user_question'` |
-| `alert` | 工具审批 | `tools/pre-execute` 最终决策为 `ask` |
-| `alert` | 登录/凭据过期 | `deepseek-account/session-expired`、`model-sign-in-required` |
-| `done` | 一轮回答结束 | `session/event` → `turn/end`（`reason.kind === 'completed'`） |
+| `alert` | 工具审批等待你点允许 | `tools/pre-execute` 最终决策为 `ask` |
+| `alert` | 登录 / 凭据过期 | `deepseek-account/session-expired`、`model-sign-in-required` |
+| `done` | 一轮回答结束 | `session/event` → `turn/end`，`reason.kind === 'completed'` |
 | `done` | 子代理结束 | `subagent/end` |
-| `done` | 后台作业结束 | `ctx.jobs.events.subscribe({ owners: 'all' })` → `settled` |
-| `done` | 目标完成 | `goal/changed` → `operation === 'complete'` |
-| `error` | 这一轮报错 / 超 max-tokens | `turn/end`（`error` / `max-tokens`） |
-| `stopped` | 目标被阻塞 | `goal/changed` → `operation === 'block'` |
-| `stopped` | 会话被停止/归档 | `workspace/session-stop` |
-| `stopped` | 被外部中断 | `turn/end`（`aborted`，用户自己按的停止不响） |
+| `done` | 后台作业结束 | `jobs.events` → `settled` |
+| `done` | 目标完成 | `goal/changed`，`operation === 'complete'` |
+| `error` | 这一轮报错 / 撞上 max-tokens | `turn/end`，`reason.kind === 'error' \| 'max-tokens'` |
+| `stopped` | 目标被阻塞 | `goal/changed`，`operation === 'block'` |
+| `stopped` | 会话被停止或归档 | `workspace/session-stop` |
+| `stopped` | 被外部中断 | `turn/end`，`reason.kind === 'aborted'` |
 
-去重：子代理会话的 `turn/end` 会被跳过（由 `subagent/end` 统一提醒）；
-前台已经 `await` 到的后台作业不再补一声（`settled.awaited`）。
+### 去重与静音规则
 
-## 安装与形态
+- 子代理会话的 `turn/end` 会被跳过 —— 由 `subagent/end` 统一提醒，否则一次子代理响两声。
+- 你自己按下的停止（`aborted` 且 `cause.kind === 'user'`）不响：那是你干的，不用通知你。
+- 前台已经 `await` 到结果的后台作业不补响（`settled.awaited`），避免响两次。
+- 同一种声音两次之间至少间隔 `minGapMs`（默认 600ms），防止连环响。
+- 总开关 `enabled` 关掉后，任何事件都不出声。
 
-当前**已安装形态**（推荐，已与工作目录解耦）：
+## 安装
+
+### 从 GitHub 安装（推荐）
+
+在 DSH 里让 Agent 用 `plugin_manager` 安装：
+
+```
+plugin_manager  action=install_bundle  target=github:<你的GitHub账号>/dsh-chime
+```
+
+### 从 Release 的 tgz 安装
+
+下载 Release 里的 `dsh-chime-<版本>.tgz`，然后：
+
+```
+plugin_manager  action=install_bundle  target=file:<tgz 的绝对路径>
+```
+
+tgz 建议放在 `%USERPROFILE%\.dsh\bundles\` 下 —— 这是 DSH 自己存放 bundle 的位置，
+profile 重装依赖时会从这里重新解包。
+
+### 从源码打包
 
 ```powershell
 pnpm pack --pack-destination dist
-Copy-Item dist\local-dsh-chime-0.1.0.tgz C:\Users\郭GG\.dsh\bundles\ -Force
-plugin_manager remove_bundle  target=@local/dsh-chime
-plugin_manager install_bundle target=file:C:\Users\郭GG\.dsh\bundles\local-dsh-chime-0.1.0.tgz
+plugin_manager  action=install_bundle  target=file:<绝对路径>\dist\dsh-chime-1.0.0.tgz
 ```
 
-profile 里记的是 `"@local/dsh-chime": "file:C:/Users/郭GG/.dsh/bundles/local-dsh-chime-0.1.0.tgz"`，
-`node_modules/@local/dsh-chime` 是**实体目录**（不是快捷方式）。
+### 装完确认
 
-> ⚠️ 开发期若用 `install_bundle target=<本地目录>`，装的是 `link:`。**移除它时
-> pnpm 会把链接目标目录一起删掉**（本仓库就被这么清空过一次，靠 tarball 才救回来）。
-> 想边改边试，请先备份，或改用 tarball 反复换装。
-
-### 改完代码怎么生效
-
-tarball 装法不跟随工作区，需要重打再换装：
-
-```powershell
-pnpm pack --pack-destination dist
-Copy-Item dist\local-dsh-chime-0.1.0.tgz C:\Users\郭GG\.dsh\bundles\ -Force
-plugin_manager remove_bundle  target=@local/dsh-chime
-plugin_manager install_bundle target=file:C:\Users\郭GG\.dsh\bundles\local-dsh-chime-0.1.0.tgz
-```
-
-### 哪些"清理"会 / 不会弄丢它
-
-| 场景 | 结果 |
-|---|---|
-| 删掉 `E:\DeskProject\fishplugin` | ✅ 运行不受影响（profile 里有实体副本） |
-| 删掉 `~/.dsh/bundles/*.tgz` | ✅ 运行中的不受影响；但 profile 重装依赖时会失败 |
-| profile 重装依赖（`pnpm install`） | ✅ 从 `~/.dsh/bundles` 的 tgz 重新解包 |
-| 删掉整个 profile / 重装 DSH 桌面端 | ❌ 需要重新 `install_bundle` |
-| **DSH 版本更新** | ✅ 不动 profile，插件保留 |
-
-要真正做到"换台机器也不怕"，把仓库推到 GitHub 并用
-`install_bundle target=github:<user>/<repo>` 安装——远端才是最后一份备份。
+左侧边栏 → **插件**（Plugins）→ 列表里出现 `dsh-chime`，点开它的行能看到配置表单。
 
 ## 配置
 
-改 `cordis.patch.yml` 里的 `config`，保存后重新加载插件即生效：
+### 在界面里改（推荐）
+
+**插件面板 → `dsh-chime` 行** 展开后就是表单：
+
+| 字段 | 作用 |
+|---|---|
+| `enabled` | 总开关，关掉后全部静音 |
+| `volume` | 0–100，按比例缩放 16bit PCM 采样后播放（`SoundPlayer` 本身没有音量参数） |
+| `minGapMs` | 同一种声音的最小间隔，防连环响 |
+| `events.*` | 9 条信号各自的独立开关 |
+| `sounds.*` | 填 WAV 绝对路径替换内置音；留空用内置 |
+| `debug` / `debugLog` | 把每次响动写进日志；路径留空则写 `%TEMP%\dsh-chime.log` |
+
+表单里的字段都标了 `.volatile()`，**改完立即生效**，不用重装也不用重启 —— 插件每次响动前
+都会重读一遍配置。
+
+### 直接改 YAML（等价）
+
+默认值定义在 `index.js` 的 `export const Config` 里，所以 bundle 层的 `config` 留空即可。
+想手改就照抄到 profile 的 patch 层：
 
 ```yaml
-- insert:
-    - id: dsh-chime
-      name: '@local/dsh-chime'
-      config:
-        enabled: true          # 总开关
-        minGapMs: 600          # 同一种声音的最小间隔，防止连环响
-        debug: false           # true 时把每次响动写进日志，便于排查
-        debugLog: null         # 省略则写 %TEMP%\dsh-chime.log
-        sounds:                # 想换音色就填 WAV 的绝对路径，null/省略用内置音
-          done: null
-          alert: null
-          error: null
-          stopped: null
-        events:                # 逐项开关，false 即静音该类
-          question: true
-          approval: true
-          account: true
-          turnEnd: true
-          turnError: true
-          subagentEnd: true
-          jobEnd: true
-          goalEnd: true
-          sessionStop: true
+- id: dsh-chime
+  name: dsh-chime
+  config:
+    enabled: true
+    volume: 100
+    minGapMs: 600
+    debug: false
+    debugLog: ''
+    sounds:
+      done: ''
+      alert: ''
+      error: ''
+      stopped: ''
+    events:
+      question: true
+      approval: true
+      account: true
+      turnEnd: true
+      turnError: true
+      subagentEnd: true
+      jobEnd: true
+      goalEnd: true
+      sessionStop: true
 ```
 
-自定义音色要求是 **PCM WAV**（44.1kHz / 16bit / 单声道最稳），时长建议 < 1 秒。
-音量跟随系统音量，插件自身不做衰减。
+### 自定义音色
 
-重新生成内置音色：
+要求是 **PCM WAV**：44.1kHz / 16bit / 单声道最稳，时长建议 1 秒以内。
+
+- `volume` 为 100 时原样播放；低于 100 才缩放采样，缩放结果缓存在 `%TEMP%\dsh-chime\`。
+- WAV 不是 16bit PCM（比如 24bit 或浮点）时，音量不生效但仍会照常播放。
+- 路径解析不了、文件不存在时，退化成系统提示音（`[console]::beep`），不会静默失败。
+
+重新生成内置音色（纯标准库，不需要任何依赖）：
 
 ```powershell
 python tools\make_sounds.py
 ```
 
-## 实现备忘
+## 为什么 DSH 升级不会把它清掉
 
-- **提问为什么读日志而不是听事件**：`user-questions/request` 是 agent scope 内的
-  answerer waterfall。挂在 profile 根上收不到，挂到 `agent.ctx` 上同样收不到（两种
-  都实测）。`session/event` 是广播的，稳定可收，`tool/call` 与提问卡片出现的时刻
-  基本一致，所以走日志。
-- **播放**：`powershell.exe -NoProfile -WindowStyle Hidden` +
-  `System.Media.SoundPlayer.PlaySync()`，单次开销约 0.4–0.8 秒，无常驻进程。
-- **升级兼容**：`engines` 只约束 Node（`>=20`），不写死 `engines.dsh`——写死会在
-  DSH 升级后被判为不兼容而拒绝启用（本机 `dsh-oil-ui` 就是这么变成
-  `incompatible-version` 的）。
+DSH 桌面端升级时替换的是应用自身（`resources/app.asar`），而插件装在 **profile** 里：
 
-## 自检
+| 场景 | 结果 |
+|---|---|
+| DSH 版本更新 | ✅ 插件与配置都保留 |
+| 删掉本仓库的克隆目录 | ✅ 运行不受影响（profile 里是实体副本） |
+| 删掉 `%USERPROFILE%\.dsh\bundles\*.tgz` | ✅ 正在运行的照旧；但 profile 重装依赖时会失败 |
+| 删掉整个 profile / 重装系统 | ❌ 需要重新安装插件 |
+| 改了插件包名或行 `id` | ❌ 配置按 id 记，改了等于换新插件，要重填 |
+
+另外：本插件的 `engines` **只约束 Node 版本**（`>=20`），不写 `engines.dsh`。
+把 `engines.dsh` 钉死到某个 rc 版本，会在 DSH 升级后被判为不兼容而直接拒绝启用 ——
+那是不少第三方插件"更新后消失"的真实原因。
+
+## 排查
+
+把 `debug` 打开，然后看日志：
 
 ```powershell
-# 1. 行是否活着
-#    cordis_inspect_query → host / Config / listConfigs → name: "@local/dsh-chime"
-# 2. 打开 debug: true 后，日志里应出现 "play done (turnEnd) — turn 3 completed"
-Get-Content $env:TEMP\dsh-chime.log -Tail 20
+Get-Content "$env:TEMP\dsh-chime.log" -Tail 20
 ```
 
-## 验证状态
+每次响动会留一行，例如：
 
-| 链路 | 状态 |
-|---|---|
-| 提问（A1） | ✅ 实机验证（听到 + 日志） |
-| 每轮结束（B1） | ⏳ 逻辑已接，待下一轮结束确认 |
-| 子代理结束（B3） | ✅ 实机验证 |
-| 后台作业（B5） | ✅ 实机验证（含 `awaited` 去重） |
-| 目标完成/阻塞（B6） | ⏳ 信号已确认，未实机触发 |
-| 报错（C1） | ⏳ 未实机触发（无主动制造错误） |
-| 会话停止（C3） | ⏳ 未实机触发（不做破坏性测试） |
-| 审批（A2/A5） | ⚠️ 机制确认（决策 `ask`），本机审批策略为 never 未实机触发 |
-| 登录过期（A4） | ⚠️ 未实机触发 |
-| 定时任务（B7） | ❌ 无公开投递事件，未实现 |
-| 连接断开（C4） | ❌ 客户端信号，Host 侧无法可靠判断，未实现 |
-| 上下文压缩（C5） | ❌ 未确认事件名，未实现 |
+```
+[2026-01-01T00:00:00.000Z] play done (turnEnd) — turn 3 completed
+[2026-01-01T00:00:01.000Z] skip alert (question) — debounce
+[2026-01-01T00:00:02.000Z] play beep (turnEnd) — missing done file: <路径>
+```
+
+三层意思对上号就知道了：`play` = 正常响；`skip ... debounce` = 被最小间隔挡了；
+`play beep ... missing` = 音色文件找不到，退化成了系统提示音。
 
 ## 已知边界
 
-- 只在 Windows 上出声（依赖 `powershell.exe` + `System.Media.SoundPlayer`）。
-- 不区分窗口是否聚焦：正在看屏幕时，每轮结束也会响（这是你选择的默认值）。
+- **仅 Windows**：依赖 `powershell.exe`。macOS / Linux 需要换播放后端（`afplay` / `paplay`），
+  本仓库暂未实现。
+- **不做焦点过滤**：你正盯着屏幕时，每轮结束同样会响。这是刻意的默认值——"我看得见"和
+  "我知道它说完了"是两回事。真要静音请用逐项开关。
+- **播放是子进程**：每次响动拉起一个隐藏的 `powershell.exe`，开销约 0.4–0.8 秒，不常驻。
+- **未实现的信号**：定时任务投递（没有公开事件）、客户端连接断开（Host 侧无法可靠判断）、
+  上下文压缩（事件名未确认）。这些情况目前不会响。
+
+## 目录结构
+
+```
+dsh-chime/
+├── index.js             Host 半边：事件监听 + 播放 + 配置解析
+├── client.js            浏览器半边：插件面板里的配置表单（预编译的 ModuleLoader 工厂）
+├── cordis.patch.yml     bundle 补丁：往 profile 插入一行
+├── package.json
+├── assets/              内置音色 done / alert / error / stopped
+├── locale/              面板标题与描述（zh / en）
+├── icon.svg
+└── tools/make_sounds.py 音色生成器（纯标准库）
+```
+
+两半都是**零构建**的纯 JS：`client.js` 直接以 DSH 自带的 `__ModuleLoader__` 工厂格式写成，
+改完不需要打包器。
+
+## 许可
+
+MIT，见 [LICENSE](LICENSE)。
