@@ -35,31 +35,43 @@ DSH 默认是安静的。Agent 停下来等你说话、提问卡片弹出来、�
 
 ## 安装
 
-### 从 GitHub 安装（推荐）
+### 把本页交给 Agent（推荐）
 
-在 DSH 里让 Agent 用 `plugin_manager` 安装：
+把**这个 GitHub 页面的地址**发给你的 DSH Agent，再说一句「装这个插件」就行。
+Agent 会拿仓库地址调 `plugin_manager`，从源码装成 bundle —— 不用你自己敲命令，
+也不用关心包名、版本或 tarball。
 
-```
-plugin_manager  action=install_bundle  target=github:<你的GitHub账号>/dsh-chime
-```
+想说得更明确，直接粘贴：
 
-### 从 Release 的 tgz 安装
+> 用 plugin_manager 安装这个插件：<粘贴浏览器地址栏里的本页链接>
 
-下载 Release 里的 `dsh-chime-<版本>.tgz`，然后：
+安装器认这几种来源：
 
-```
-plugin_manager  action=install_bundle  target=file:<tgz 的绝对路径>
-```
+| 你给的地址 | 安装器怎么处理 |
+|---|---|
+| `https://github.com/<owner>/<repo>`（本页地址） | 从 git 仓库取源码，装成 bundle |
+| `github:<owner>/<repo>` | 同上，简写形式 |
+| `https://…/dsh-chime-<版本>.tgz` | 按 tarball 安装 |
 
-tgz 建议放在 `%USERPROFILE%\.dsh\bundles\` 下 —— 这是 DSH 自己存放 bundle 的位置，
+> 仓库 URL 里的子路径要去掉：`/tree/main`、`/blob/main/...` 这类后缀会被拒绝，
+> 它只认 `https://host/owner/repo` 这一段。
+
+### 从 Release 的 tgz 安装（不想走 git 时）
+
+下载 Release 附件 `dsh-chime-<版本>.tgz`，然后让 Agent：
+
+> 用 plugin_manager 安装这个 tarball：<tgz 的绝对路径>
+
+把 tgz 放在 `%USERPROFILE%\.dsh\bundles\` 下更稳妥 —— 那是 DSH 存放 bundle 的位置，
 profile 重装依赖时会从这里重新解包。
 
 ### 从源码打包
 
 ```powershell
 pnpm pack --pack-destination dist
-plugin_manager  action=install_bundle  target=file:<绝对路径>\dist\dsh-chime-1.0.0.tgz
 ```
+
+产物是 `dist\dsh-chime-<版本>.tgz`，按上一节的 tarball 方式安装。
 
 ### 装完确认
 

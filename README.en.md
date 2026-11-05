@@ -38,21 +38,32 @@ so you miss it the moment you look away. This plugin covers that gap.
 
 ## Install
 
-### From GitHub (recommended)
+### Hand this page to your agent (recommended)
 
-Ask the agent to install it with `plugin_manager`:
+Send **this GitHub page's URL** to your DSH agent and say "install this plugin".
+The agent passes the repository address to `plugin_manager` and installs it from
+source — no commands to type, nothing to know about package names or versions.
 
-```
-plugin_manager  action=install_bundle  target=github:<your-github-account>/dsh-chime
-```
+For an explicit instruction, paste:
 
-### From a release tarball
+> Install this plugin with plugin_manager: <the URL from your address bar>
 
-Download `dsh-chime-<version>.tgz` from the Releases page, then:
+Accepted sources:
 
-```
-plugin_manager  action=install_bundle  target=file:<absolute path to the tgz>
-```
+| What you give it | What the installer does |
+|---|---|
+| `https://github.com/<owner>/<repo>` (this page) | clones the repo and installs it as a bundle |
+| `github:<owner>/<repo>` | same, shorthand form |
+| `https://…/dsh-chime-<version>.tgz` | installs the tarball |
+
+> Strip sub-paths from the repository URL: suffixes such as `/tree/main` or
+> `/blob/main/...` are rejected — only `https://host/owner/repo` is accepted.
+
+### From a release tarball (without git)
+
+Download `dsh-chime-<version>.tgz` from the Releases page, then tell your agent:
+
+> Install this tarball with plugin_manager: <absolute path to the tgz>
 
 Keeping the tarball in `%USERPROFILE%\.dsh\bundles\` is a good idea: that is where DSH
 stores bundles, and a profile dependency reinstall unpacks from there.
@@ -61,8 +72,9 @@ stores bundles, and a profile dependency reinstall unpacks from there.
 
 ```powershell
 pnpm pack --pack-destination dist
-plugin_manager  action=install_bundle  target=file:<absolute path>\dist\dsh-chime-1.0.0.tgz
 ```
+
+The result is `dist\dsh-chime-<version>.tgz`; install it as a tarball, as above.
 
 ### Verify
 
